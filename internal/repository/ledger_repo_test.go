@@ -3,35 +3,27 @@ package repository
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-
 	"github.com/fardannozami/fincore/internal/domain"
+	"github.com/fardannozami/fincore/internal/testutil"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 )
 
-func setupLedgerTestDB(t *testing.T) *gorm.DB {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	assert.NoError(t, err)
-
-	err = db.AutoMigrate(&domain.Ledger{})
-	assert.NoError(t, err)
-
-	return db
-}
-
 func TestLedgerRepository_Create(t *testing.T) {
-	db := setupLedgerTestDB(t)
+	db := testutil.SetupDB(t, &domain.Ledger{})
 	repo := NewLedgerRepository(db)
 
 	tx := db.Begin()
+	id := uuid.NewString()
+	walletID := uuid.NewString()
+	refID := uuid.NewString()
 
 	ledger := &domain.Ledger{
-		ID:       "ledger-1",
-		WalletID: "wallet-1",
+		ID:       id,
+		WalletID: walletID,
 		Amount:   1000,
 		Type:     "CREDIT",
-		RefID:    "trx-1",
+		RefID:    refID,
 	}
 
 	err := repo.Create(tx, ledger)
@@ -41,10 +33,10 @@ func TestLedgerRepository_Create(t *testing.T) {
 
 	// verify ke DB
 	var result domain.Ledger
-	err = db.First(&result, "id = ?", "ledger-1").Error
+	err = db.First(&result, "id = ?", id).Error
 
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1000), result.Amount)
 	assert.Equal(t, "CREDIT", result.Type)
-	assert.Equal(t, "wallet-1", result.WalletID)
+	assert.Equal(t, walletID, result.WalletID)
 }

@@ -36,40 +36,38 @@ func (u *TransferUsecase) Transfer(fromID, toID string, amount int64, refID stri
 		return errors.New("invalid amount")
 	}
 
-	return u.db.Transaction(func(tx *gorm.DB) error {
+	// 🛠️ Optimasi: Generasi UUID di luar transaksi untuk menghemat waktu lock
+	debitID := uuid.NewString()
+	creditID := uuid.NewString()
 
-		// 🔐 Hindari deadlock
+	return u.db.Transaction(func(tx *gorm.DB) error {
+		// 🔐 Anti-Deadlock: Selalu urutkan dari ID terkecil
 		ids := []string{fromID, toID}
 		sort.Strings(ids)
 
-		w1, err := u.walletRepo.FindByIDForUpdate(tx, ids[0])
-		if err != nil {
-			return err
+		for _, id := range ids {
+			updateAmount := amount
+			if id == fromID {
+				updateAmount = -amount
+			}
+
+			// Atomic update: Cek saldo + Update saldo dalam 1 perintah SQL
+			wallet, err := u.walletRepo.UpdateBalanceAtomic(tx, id, updateAmount)
+			if err != nil {
+				return err
+			}
+			if wallet.ID == "" {
+				if id == fromID {
+					return errors.New("insufficient balance or wallet not found")
+				}
+				return errors.New("wallet not found")
+			}
 		}
 
-		w2, err := u.walletRepo.FindByIDForUpdate(tx, ids[1])
-		if err != nil {
-			return err
-		}
-
-		var fromWallet, toWallet *domain.Wallet
-		if w1.ID == fromID {
-			fromWallet = w1
-			toWallet = w2
-		} else {
-			fromWallet = w2
-			toWallet = w1
-		}
-
-		// 💥 cek saldo
-		if fromWallet.Balance < amount {
-			return errors.New("insufficient balance")
-		}
-
-		// 🧾 ledger debit
+		// 🧾 ledger debit & credit
 		if err := u.ledgerRepo.Create(tx, &domain.Ledger{
-			ID:       uuid.NewString(),
-			WalletID: fromWallet.ID,
+			ID:       debitID,
+			WalletID: fromID,
 			Amount:   -amount,
 			Type:     "DEBIT",
 			RefID:    refID,
@@ -77,26 +75,13 @@ func (u *TransferUsecase) Transfer(fromID, toID string, amount int64, refID stri
 			return err
 		}
 
-		// 🧾 ledger credit
 		if err := u.ledgerRepo.Create(tx, &domain.Ledger{
-			ID:       uuid.NewString(),
-			WalletID: toWallet.ID,
+			ID:       creditID,
+			WalletID: toID,
 			Amount:   amount,
 			Type:     "CREDIT",
 			RefID:    refID,
 		}); err != nil {
-			return err
-		}
-
-		// update balance
-		fromWallet.Balance -= amount
-		toWallet.Balance += amount
-
-		if err := u.walletRepo.Update(tx, fromWallet); err != nil {
-			return err
-		}
-
-		if err := u.walletRepo.Update(tx, toWallet); err != nil {
 			return err
 		}
 

@@ -3,6 +3,7 @@ package configs
 import (
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -10,25 +11,48 @@ import (
 type Config struct {
 	DBUrl       string
 	AutoMigrate bool
+	Port        string
+}
+
+func getEnv(key, fallback string) string {
+	val := os.Getenv(key)
+	if val == "" {
+		return fallback
+	}
+	return val
+}
+
+func mustGetEnv(key string) string {
+	val := os.Getenv(key)
+	if val == "" {
+		log.Fatalf("Missing required env: %s", key)
+	}
+	return val
 }
 
 func LoadConfig() *Config {
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("No .env file found")
+		log.Println("Running without .env (production mode)")
 	}
 
-	dbUrl := "host=" + os.Getenv("DB_HOST") +
-		" port=" + os.Getenv("DB_PORT") +
-		" user=" + os.Getenv("DB_USER") +
-		" password=" + os.Getenv("DB_PASSWORD") +
-		" dbname=" + os.Getenv("DB_NAME") +
-		" sslmode=" + os.Getenv("DB_SSLMODE")
+	dbUrl := "host=" + mustGetEnv("DB_HOST") +
+		" port=" + mustGetEnv("DB_PORT") +
+		" user=" + mustGetEnv("DB_USER") +
+		" password=" + mustGetEnv("DB_PASSWORD") +
+		" dbname=" + mustGetEnv("DB_NAME") +
+		" sslmode=" + getEnv("DB_SSLMODE", "disable")
 
-	autoMigrate := os.Getenv("AUTO_MIGRATE") == "true"
+	autoMigrate, err := strconv.ParseBool(getEnv("AUTO_MIGRATE", "false"))
+	if err != nil {
+		autoMigrate = false
+	}
+
+	port := getEnv("PORT", "8080")
 
 	return &Config{
 		DBUrl:       dbUrl,
 		AutoMigrate: autoMigrate,
+		Port:        port,
 	}
 }

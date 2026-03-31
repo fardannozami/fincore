@@ -7,20 +7,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-
 	"github.com/fardannozami/fincore/internal/domain"
 	"github.com/fardannozami/fincore/internal/repository"
+	"github.com/fardannozami/fincore/internal/testutil"
 )
 
 // setup DB test
 func setupWalletHandlerTest(t *testing.T) (*WalletHandler, *gorm.DB) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	assert.NoError(t, err)
-
-	err = db.AutoMigrate(&domain.Wallet{})
-	assert.NoError(t, err)
+	db := testutil.SetupDB(t, &domain.Wallet{})
 
 	repo := repository.NewWalletRepository(db)
 	handler := NewWalletHandler(db, repo)
